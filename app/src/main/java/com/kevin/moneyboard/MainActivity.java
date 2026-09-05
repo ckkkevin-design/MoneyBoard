@@ -185,7 +185,7 @@ public class MainActivity extends Activity {
         Calendar now = Calendar.getInstance();
         long[] cycle = cycleRange(now);
         FinanceDb.Summary s = db.getSummary(cycle[0], cycle[1]);
-        FinanceDb.Plan plan = db.getPlan(cycleKey(now));
+        FinanceDb.Plan plan = getPlanForCycle(now);
 
         LinearLayout body = pageBody();
         body.addView(v14BrandHeader());
@@ -258,7 +258,7 @@ public class MainActivity extends Activity {
         info.addView(v14HeroStat("周期", compactCycle(now), soft));
         lower.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         hero.addView(lower);
-        hero.setOnClickListener(v -> showBudget());
+        hero.setOnClickListener(v -> editTotalPlan(now, this::showHome));
         return hero;
     }
 
@@ -948,7 +948,7 @@ public class MainActivity extends Activity {
         Calendar now = Calendar.getInstance();
         long[] cycle = cycleRange(now);
         FinanceDb.Summary s = db.getSummary(cycle[0], cycle[1]);
-        FinanceDb.Plan p = db.getPlan(cycleKey(now));
+        FinanceDb.Plan p = getPlanForCycle(now);
 
         LinearLayout period = rowCard(BLUE_SOFT);
         period.addView(iconBubble("▣", BLUE, dark ? Color.rgb(34, 65, 95) : Color.WHITE), new LinearLayout.LayoutParams(dp(38), dp(38)));
@@ -963,13 +963,13 @@ public class MainActivity extends Activity {
         totalCard.setClickable(true);
         totalCard.setFocusable(true);
         totalCard.setBackground(ripple(dark ? Color.rgb(28,31,42) : Color.WHITE, 0, 20));
-        totalCard.setOnClickListener(v -> editTotalPlan(now));
+        totalCard.setOnClickListener(v -> editTotalPlan(now, this::showBudget));
         LinearLayout line = new LinearLayout(this); line.setOrientation(LinearLayout.HORIZONTAL); line.setGravity(Gravity.CENTER_VERTICAL);
         line.addView(text("总预算", 13, true, TEXT), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView setBudget = text(p.budget > 0 ? "修改预算" : "设置预算", 11, true, BLUE);
         setBudget.setPadding(dp(10), dp(6), dp(10), dp(6));
         setBudget.setBackground(rounded(dark ? Color.rgb(35,65,92) : BLUE_SOFT, 0, 12));
-        setBudget.setOnClickListener(v -> editTotalPlan(now));
+        setBudget.setOnClickListener(v -> editTotalPlan(now, this::showBudget));
         line.addView(setBudget);
         totalCard.addView(line);
         TextView big = text(p.budget > 0 ? "¥" + money.format(p.budget) : "未设置", 25, true, TEXT); big.setPadding(0, dp(8),0,0); totalCard.addView(big);
@@ -981,7 +981,7 @@ public class MainActivity extends Activity {
         body.addView(totalCard, cardParams(10));
 
         body.addView(sectionLabel("分类预算", "+ 添加分类"));
-        Map<String, Double> saved = db.getCategoryBudgets(cycleKey(now));
+        Map<String, Double> saved = getCategoryBudgetsForCycle(now);
         String[] defaults = {"餐饮", "购物", "交通", "日用"};
         if (saved.isEmpty()) {
             double base = p.budget > 0 ? p.budget : 0;
@@ -1014,15 +1014,66 @@ public class MainActivity extends Activity {
     }
 
     private void editTotalPlan(Calendar cycle) {
-        FinanceDb.Plan p = db.getPlan(cycleKey(cycle));
+        editTotalPlan(cycle, this::showBudget);
+    }
+
+    private void editTotalPlan(Calendar cycle, Runnable afterSave) {
+        FinanceDb.Plan p = getPlanForCycle(cycle);
         LinearLayout box = dialogForm();
-        EditText budget = edit("总预算"); budget.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); if (p.budget > 0) budget.setText(stripZero(p.budget));
-        EditText target = edit("净结余目标"); target.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL); if (p.target > 0) target.setText(stripZero(p.target));
-        box.addView(budget); box.addView(target, fieldParams());
-        new AlertDialog.Builder(this).setTitle("本周期预算与目标").setView(box).setNegativeButton("取消",null).setPositiveButton("保存",(d,w)->{
-            double b=parseNonNegative(budget.getText().toString()), t=parseNonNegative(target.getText().toString());
-            if(b<0||t<0){toast("金额格式不正确");return;} db.savePlan(cycleKey(cycle),b,t); showBudget();
-        }).show();
+
+        TextView budgetLabel = text("本周期总预算", 11, true, TEXT);
+        budgetLabel.setPadding(0, dp(2), 0, dp(6));
+        box.addView(budgetLabel);
+        EditText budget = edit("例如 3000");
+        budget.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        if (p.budget > 0) budget.setText(stripZero(p.budget));
+        box.addView(budget, fieldParamsNoTop());
+
+        TextView targetLabel = text("净结余目标（可不填）", 11, true, TEXT);
+        targetLabel.setPadding(0, dp(13), 0, dp(6));
+        box.addView(targetLabel);
+        EditText target = edit("例如 1500");
+        target.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        if (p.target > 0) target.setText(stripZero(p.target));
+        box.addView(target, fieldParamsNoTop());
+
+        TextView keyHint = text("保存到：" + displayCycleFull(cycle), 9, false, MUTED);
+        keyHint.setPadding(0, dp(11), 0, 0);
+        box.addView(keyHint);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(p.budget > 0 ? "修改预算" : "设置预算")
+                .setView(box)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            double b = parseNonNegative(budget.getText().toString());
+            double t = parseNonNegative(target.getText().toString());
+            if (b <= 0) {
+                budget.setError("请输入大于 0 的总预算");
+                budget.requestFocus();
+                return;
+            }
+            if (t < 0) {
+                target.setError("金额格式不正确");
+                target.requestFocus();
+                return;
+            }
+            if (!savePlanForCycle(cycle, b, t)) {
+                toast("预算保存失败，请重试");
+                return;
+            }
+            FinanceDb.Plan verify = getPlanForCycle(cycle);
+            if (Math.abs(verify.budget - b) > 0.001 || Math.abs(verify.target - t) > 0.001) {
+                toast("预算写入校验失败，请重试");
+                return;
+            }
+            dialog.dismiss();
+            toast("已保存本周期预算 ¥" + money.format(b));
+            if (afterSave != null) afterSave.run();
+        }));
+        dialog.show();
     }
 
     private void editCategoryBudget(Calendar cycle, String category, double current) {
@@ -1032,7 +1083,7 @@ public class MainActivity extends Activity {
         box.addView(name); box.addView(amount, fieldParams());
         new AlertDialog.Builder(this).setTitle(category==null?"添加分类预算":"修改分类预算").setView(box).setNegativeButton("取消",null).setPositiveButton("保存",(d,w)->{
             double v=parseNonNegative(amount.getText().toString()); if(name.getText().toString().trim().isEmpty()||v<0){toast("请填写正确的分类和金额");return;}
-            db.saveCategoryBudget(cycleKey(cycle),name.getText().toString(),v); showBudget();
+            saveCategoryBudgetForCycle(cycle,name.getText().toString(),v); showBudget();
         }).show();
     }
 
@@ -1134,10 +1185,14 @@ public class MainActivity extends Activity {
         body.addView(settingsRow("↧","数据恢复","从备份文件恢复",this::restoreData),cardParams(7));
         body.addView(settingsRow("⇩","导出数据","导出 CSV 账单",this::exportCsv),cardParams(7));
         body.addView(settingsRow("◐","主题设置",themeLabel(),this::showThemeDialog),cardParams(7));
-        body.addView(settingsRow("ⓘ","关于我们","Moeny Board v1.4.1 · 陈开开开发",()->new AlertDialog.Builder(this)
-                .setTitle("Moeny Board")
-                .setMessage("一个完全离线、本地存储的个人记账 App。\n\n支持按月循环周期和自定义日期周期。\n首页预算卡可直接设置预算；每日消费趋势图可查看分类与逐笔消费。\n数据只保存在你的手机。\n\n本软件由陈开开开发。")
+        body.addView(settingsRow("ⓘ","关于我们","Moeny Board v" + appVersionName() + " · 陈开开开发",()->new AlertDialog.Builder(this)
+                .setTitle("Moeny Board v" + appVersionName())
+                .setMessage("一个完全离线、本地存储的个人记账 App。\n\n支持按月循环周期和自定义日期周期。\n点击首页紫色预算卡可直接设置本周期总预算；点击每日消费趋势图可查看分类与逐笔消费。\n数据只保存在你的手机。\n\n本软件由陈开开开发。\n版本：" + appVersionName() + " (" + appVersionCode() + ")")
                 .setPositiveButton("知道了",null).show()),cardParams(7));
+        TextView versionFoot = text("当前安装版本：v" + appVersionName() + "  ·  build " + appVersionCode(), 10, false, MUTED);
+        versionFoot.setGravity(Gravity.CENTER);
+        versionFoot.setPadding(0, dp(14), 0, dp(3));
+        body.addView(versionFoot);
         mount(body);
     }
 
@@ -1299,11 +1354,65 @@ public class MainActivity extends Activity {
     private long customCycleStartMs(){return prefs==null?0:prefs.getLong("custom_cycle_start",0);}
     private long customCycleEndMs(){return prefs==null?0:prefs.getLong("custom_cycle_end",0);}
 
-    private String cycleKey(Calendar source){
+    /**
+     * v1.5 canonical storage key: derived only from the exact active cycle range.
+     * This prevents home/budget/custom-cycle screens from accidentally reading different plan rows.
+     */
+    private String cycleStorageKey(Calendar source){
+        long[] r = cycleRange(source);
+        SimpleDateFormat f = new SimpleDateFormat("yyyyMMdd", Locale.US);
+        return "cycle-" + f.format(new Date(r[0])) + "-" + f.format(new Date(r[1]));
+    }
+
+    /** Legacy key used by v1.4.x and earlier. Kept only for migration / downgrade compatibility. */
+    private String legacyCycleKey(Calendar source){
         if(isCustomCycle())return "custom-"+new SimpleDateFormat("yyyyMMdd",Locale.US).format(new Date(customCycleStartMs()))+"-"+new SimpleDateFormat("yyyyMMdd",Locale.US).format(new Date(customCycleEndMs()));
         Calendar s=cycleStart(source);
         if(cycleDay()==15)return String.format(Locale.US,"%04d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1);
         return String.format(Locale.US,"%04d-%02d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private FinanceDb.Plan getPlanForCycle(Calendar source){
+        String canonical = cycleStorageKey(source);
+        if (db.hasPlan(canonical)) return db.getPlan(canonical);
+        String legacy = legacyCycleKey(source);
+        if (!canonical.equals(legacy) && db.hasPlan(legacy)) {
+            FinanceDb.Plan old = db.getPlan(legacy);
+            db.savePlan(canonical, old.budget, old.target);
+            return old;
+        }
+        return new FinanceDb.Plan(0, 0);
+    }
+
+    private boolean savePlanForCycle(Calendar source, double budget, double target){
+        String canonical = cycleStorageKey(source);
+        boolean ok = db.savePlan(canonical, budget, target);
+        // Dual-write the old key so an accidental downgrade still sees the latest budget.
+        String legacy = legacyCycleKey(source);
+        if (!canonical.equals(legacy)) db.savePlan(legacy, budget, target);
+        return ok;
+    }
+
+    private Map<String, Double> getCategoryBudgetsForCycle(Calendar source){
+        String canonical = cycleStorageKey(source);
+        Map<String, Double> current = db.getCategoryBudgets(canonical);
+        if (!current.isEmpty()) return current;
+        String legacy = legacyCycleKey(source);
+        if (!canonical.equals(legacy)) {
+            Map<String, Double> old = db.getCategoryBudgets(legacy);
+            if (!old.isEmpty()) {
+                for (Map.Entry<String, Double> e : old.entrySet()) db.saveCategoryBudget(canonical, e.getKey(), e.getValue());
+                return old;
+            }
+        }
+        return current;
+    }
+
+    private void saveCategoryBudgetForCycle(Calendar source, String category, double budget){
+        String canonical = cycleStorageKey(source);
+        db.saveCategoryBudget(canonical, category, budget);
+        String legacy = legacyCycleKey(source);
+        if (!canonical.equals(legacy)) db.saveCategoryBudget(legacy, category, budget);
     }
 
     private String displayCycle(Calendar source){
@@ -1340,6 +1449,8 @@ public class MainActivity extends Activity {
     private String stripZero(double d){return Math.rint(d)==d?String.valueOf((long)d):String.valueOf(d);}
     private double parseNonNegative(String s){String x=s.trim();if(x.isEmpty())return 0;try{double v=Double.parseDouble(x);return v>=0?v:-1;}catch(Exception e){return -1;}}
     private String weekZh(Calendar c){String[] names={"日","一","二","三","四","五","六"};return names[c.get(Calendar.DAY_OF_WEEK)-1];}
+    private String appVersionName(){try{android.content.pm.PackageInfo i=getPackageManager().getPackageInfo(getPackageName(),0);return i.versionName==null?"?":i.versionName;}catch(Exception e){return "?";}}
+    private int appVersionCode(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionCode;}catch(Exception e){return 0;}}
     private String themeLabel(){String v=prefs.getString("theme","light");return "dark".equals(v)?"深色":"system".equals(v)?"跟随系统":"浅色";}
 
     private TextView categoryIcon(String purpose,int size){String icon="•";int color=BLUE,soft=BLUE_SOFT;String p=purpose==null?"":purpose;if(p.contains("餐")||p.contains("吃")||p.contains("咖啡")){icon="🍴";color=RED;soft=RED_SOFT;}else if(p.contains("购")||p.contains("买")){icon="▣";color=PURPLE;soft=PURPLE_SOFT;}else if(p.contains("交通")||p.contains("地铁")||p.contains("车")){icon="▰";color=BLUE;soft=BLUE_SOFT;}else if(p.contains("日用")||p.contains("房")){icon="⌂";color=GREEN;soft=GREEN_SOFT;}else if(p.contains("医")){icon="+";color=GREEN;soft=GREEN_SOFT;}else if(p.contains("娱乐")){icon="♬";color=ORANGE;soft=ORANGE_SOFT;}TextView t=text(icon,size<=34?13:15,true,color);t.setGravity(Gravity.CENTER);t.setBackground(rounded(soft,0,99));return t;}
@@ -1358,6 +1469,7 @@ public class MainActivity extends Activity {
     private View progressLine(double rate,int color){double safe=Math.max(0,Math.min(1,rate));LinearLayout track=new LinearLayout(this);track.setOrientation(LinearLayout.HORIZONTAL);track.setBackground(rounded(dark?Color.rgb(49,60,72):Color.rgb(234,237,242),0,99));if(safe>0){View fill=new View(this);fill.setBackground(rounded(color,0,99));track.addView(fill,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.MATCH_PARENT,(float)safe));}if(safe<1){View rest=new View(this);track.addView(rest,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.MATCH_PARENT,(float)(1-safe)));}return track;}
     private LinearLayout.LayoutParams progressParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(7));lp.setMargins(0,dp(9),0,0);return lp;}
     private LinearLayout.LayoutParams fieldParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(48));lp.setMargins(0,dp(10),0,0);return lp;}
+    private LinearLayout.LayoutParams fieldParamsNoTop(){return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(48));}
     private LinearLayout.LayoutParams cardParams(int top){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);lp.setMargins(0,dp(top),0,0);return lp;}
     private LinearLayout.LayoutParams weight(){return new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f);}
     private LinearLayout.LayoutParams weightMargin(int m){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f);lp.setMargins(dp(m),0,dp(m),0);return lp;}

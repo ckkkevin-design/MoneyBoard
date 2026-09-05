@@ -179,6 +179,17 @@ public class FinanceDb extends SQLiteOpenHelper {
         }
     }
 
+    public boolean hasPlan(String monthKey) {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT 1 FROM month_plans WHERE month_key=? LIMIT 1",
+                new String[]{monthKey});
+        try {
+            return c.moveToFirst();
+        } finally {
+            c.close();
+        }
+    }
+
     public Plan getPlan(String monthKey) {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT budget,target FROM month_plans WHERE month_key=?",
@@ -191,13 +202,15 @@ public class FinanceDb extends SQLiteOpenHelper {
         }
     }
 
-    public void savePlan(String monthKey, double budget, double target) {
+    public boolean savePlan(String monthKey, double budget, double target) {
+        if (monthKey == null || monthKey.trim().isEmpty()) return false;
         ContentValues v = new ContentValues();
-        v.put("month_key", monthKey);
-        v.put("budget", budget);
-        v.put("target", target);
-        getWritableDatabase().insertWithOnConflict(
+        v.put("month_key", monthKey.trim());
+        v.put("budget", Math.max(0, budget));
+        v.put("target", Math.max(0, target));
+        long rowId = getWritableDatabase().insertWithOnConflict(
                 "month_plans", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        return rowId != -1;
     }
 
     public Map<String, Double> getCategoryBudgets(String cycleKey) {
