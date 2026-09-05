@@ -955,17 +955,28 @@ public class MainActivity extends Activity {
         LinearLayout pi = new LinearLayout(this); pi.setOrientation(LinearLayout.VERTICAL); pi.setPadding(dp(10),0,0,0);
         pi.addView(text("当前周期", 11, true, BLUE)); pi.addView(text(displayCycle(now), 13, true, TEXT));
         period.addView(pi, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView modify = text("修改", 11, true, BLUE); modify.setPadding(dp(10), dp(6), dp(10), dp(6)); modify.setBackground(rounded(dark ? Color.rgb(35,65,92) : Color.WHITE,0,12)); modify.setOnClickListener(v->editTotalPlan(now));
+        TextView modify = text("修改周期", 11, true, BLUE); modify.setPadding(dp(10), dp(6), dp(10), dp(6)); modify.setBackground(rounded(dark ? Color.rgb(35,65,92) : Color.WHITE,0,12)); modify.setOnClickListener(v->showCycleSettings());
         period.addView(modify);
         body.addView(period, cardParams(0));
 
         LinearLayout totalCard = card();
+        totalCard.setClickable(true);
+        totalCard.setFocusable(true);
+        totalCard.setBackground(ripple(dark ? Color.rgb(28,31,42) : Color.WHITE, 0, 20));
+        totalCard.setOnClickListener(v -> editTotalPlan(now));
         LinearLayout line = new LinearLayout(this); line.setOrientation(LinearLayout.HORIZONTAL); line.setGravity(Gravity.CENTER_VERTICAL);
         line.addView(text("总预算", 13, true, TEXT), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        line.addView(text(p.budget > 0 ? new DecimalFormat("0%").format(Math.min(1, s.expense / p.budget)) : "0%", 13, true, TEXT));
+        TextView setBudget = text(p.budget > 0 ? "修改预算" : "设置预算", 11, true, BLUE);
+        setBudget.setPadding(dp(10), dp(6), dp(10), dp(6));
+        setBudget.setBackground(rounded(dark ? Color.rgb(35,65,92) : BLUE_SOFT, 0, 12));
+        setBudget.setOnClickListener(v -> editTotalPlan(now));
+        line.addView(setBudget);
         totalCard.addView(line);
         TextView big = text(p.budget > 0 ? "¥" + money.format(p.budget) : "未设置", 25, true, TEXT); big.setPadding(0, dp(8),0,0); totalCard.addView(big);
-        totalCard.addView(progressLine(p.budget > 0 ? s.expense / p.budget : 0, GREEN), progressParams());
+        double totalRate = p.budget > 0 ? s.expense / p.budget : 0;
+        TextView rateText = text(p.budget > 0 ? "已使用 " + new DecimalFormat("0%").format(Math.min(1, totalRate)) : "点击此卡设置本周期总预算", 10, false, MUTED);
+        rateText.setPadding(0, dp(2), 0, dp(2)); totalCard.addView(rateText);
+        totalCard.addView(progressLine(totalRate, GREEN), progressParams());
         TextView foot = text("已用 ¥" + money.format(s.expense) + (p.budget > 0 ? "       剩余 ¥" + money.format(Math.max(0, p.budget - s.expense)) : ""), 11, false, MUTED); foot.setPadding(0,dp(8),0,0); totalCard.addView(foot);
         body.addView(totalCard, cardParams(10));
 
