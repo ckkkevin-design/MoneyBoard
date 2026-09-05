@@ -1,6 +1,11 @@
-# MoneyBoard v1.3 高还原版
+# MoneyBoard v1.3.1 高还原修复版
 
 这是按用户确认的 MoneyBoard UI 示意图重构的 Android 原生记账 App。完全离线，本地 SQLite 存储，不申请联网权限。
+
+## v1.3.1 修复说明
+
+- 修复 GitHub Actions 编译错误：`settingField()` 返回类型由 `View` 改为 `TextView`，解决 `View cannot be converted to TextView`。
+- 其余 v1.3 高还原 UI、15号记账周期、预算与统计逻辑保持不变。
 
 ## v1.3 主要升级
 
