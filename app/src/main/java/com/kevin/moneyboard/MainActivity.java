@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         TextView title = text("Moeny Board", 27, true, TEXT);
         box.addView(title);
-        TextView sub = text(cycleModeLabel() + " · 轻点消费卡片查看明细", 12, false, MUTED);
+        TextView sub = text(cycleModeLabel() + " · 点预算卡设置额度 · 点趋势图查看消费明细", 12, false, MUTED);
         sub.setPadding(0, dp(5), 0, dp(15));
         box.addView(sub);
         return box;
@@ -258,7 +258,7 @@ public class MainActivity extends Activity {
         info.addView(v14HeroStat("周期", compactCycle(now), soft));
         lower.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         hero.addView(lower);
-        hero.setOnClickListener(v -> showExpenseDetails());
+        hero.setOnClickListener(v -> showBudget());
         return hero;
     }
 
@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
         outer.setOrientation(LinearLayout.HORIZONTAL);
         outer.setPadding(0, dp(2), 0, dp(2));
         outer.addView(v12MetricPill("收入", s.income, GREEN, GREEN_SOFT, null), weightMargin(3));
-        outer.addView(v12MetricPill("消费", s.expense, RED, RED_SOFT, this::showExpenseDetails), weightMargin(3));
+        outer.addView(v12MetricPill("消费", s.expense, RED, RED_SOFT, null), weightMargin(3));
         outer.addView(v12MetricPill("负债", s.debt, ORANGE, ORANGE_SOFT, null), weightMargin(3));
         outer.addView(v12MetricPill("结余", s.net(), BLUE, BLUE_SOFT, null), weightMargin(3));
         return outer;
@@ -347,7 +347,6 @@ public class MainActivity extends Activity {
         }
         row.addView(legend, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         c.addView(row);
-        c.setOnClickListener(v -> showExpenseDetails());
         return c;
     }
 
@@ -1124,9 +1123,9 @@ public class MainActivity extends Activity {
         body.addView(settingsRow("↧","数据恢复","从备份文件恢复",this::restoreData),cardParams(7));
         body.addView(settingsRow("⇩","导出数据","导出 CSV 账单",this::exportCsv),cardParams(7));
         body.addView(settingsRow("◐","主题设置",themeLabel(),this::showThemeDialog),cardParams(7));
-        body.addView(settingsRow("ⓘ","关于我们","Moeny Board v1.4.0",()->new AlertDialog.Builder(this)
+        body.addView(settingsRow("ⓘ","关于我们","Moeny Board v1.4.1 · 陈开开开发",()->new AlertDialog.Builder(this)
                 .setTitle("Moeny Board")
-                .setMessage("一个完全离线、本地存储的个人记账 App。\n\n支持按月循环周期和自定义日期周期。\n看板消费卡片可直接查看分类与逐笔消费。\n数据只保存在你的手机。")
+                .setMessage("一个完全离线、本地存储的个人记账 App。\n\n支持按月循环周期和自定义日期周期。\n首页预算卡可直接设置预算；每日消费趋势图可查看分类与逐笔消费。\n数据只保存在你的手机。\n\n本软件由陈开开开发。")
                 .setPositiveButton("知道了",null).show()),cardParams(7));
         mount(body);
     }

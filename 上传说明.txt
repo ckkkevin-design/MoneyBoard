@@ -1,10 +1,14 @@
-Moeny Board v1.4 GitHub 覆盖包
+Moeny Board v1.4.1 GitHub 覆盖说明
 
-解压后只需要把这 3 项上传到 GitHub 仓库根目录并覆盖：
-- app
-- build.gradle
-- settings.gradle
+1. 进入你的 GitHub MoneyBoard 仓库。
+2. Add file → Upload files。
+3. 将本文件夹中的 app、build.gradle、settings.gradle 上传并覆盖。
+4. Commit changes。
+5. GitHub Actions 会自动重新编译 APK。
+6. 编译成功后在 Summary → Artifacts 下载 APK。
 
-不要把 MoenyBoard_v1.4_UpdateOnly 整个外层文件夹上传。
-你原有的 .github/workflows/build-apk.yml 保持不动。
-Commit changes 后 GitHub Actions 会自动重新生成 APK。
+本次修改：
+- 紫色预算卡点击后进入预算管理，可设置本周期预算与目标。
+- 每日消费趋势曲线图点击后查看具体消费明细。
+- 取消“消费数字卡”和“消费分类占比整卡”的明细入口，入口更明确。
+- 关于我们新增“本软件由陈开开开发”。
