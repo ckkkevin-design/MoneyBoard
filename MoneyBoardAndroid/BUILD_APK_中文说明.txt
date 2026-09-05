@@ -1,0 +1,15 @@
+【钱迹看板 APK 构建说明】
+
+当前工程已经包含完整源码和 GitHub Actions 自动构建脚本。
+
+最简单方法：
+1. 注册/登录 GitHub。
+2. 新建一个仓库。
+3. 将 MoneyBoardAndroid 文件夹内的所有文件上传到仓库根目录。
+4. 点击仓库顶部 Actions。
+5. 打开 Build Android APK。
+6. 点击 Run workflow。
+7. 等构建完成，下载页面底部的 MoneyBoard-debug-apk。
+8. 解压，即得到 app-debug.apk。
+
+这个 APK 是 debug 版本，个人安装使用完全可以。
