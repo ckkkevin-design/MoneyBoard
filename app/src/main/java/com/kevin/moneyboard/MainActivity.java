@@ -10,7 +10,10 @@ import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -22,6 +25,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -120,19 +124,29 @@ public class MainActivity extends Activity {
     }
 
     private View buildRoot() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BG);
+
+        GlassBackdropView backdrop = new GlassBackdropView();
+        root.addView(backdrop, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setBackgroundColor(Color.TRANSPARENT);
+        root.addView(content, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         pageHost = new LinearLayout(this);
         pageHost.setOrientation(LinearLayout.VERTICAL);
-        root.addView(pageHost, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        pageHost.setBackgroundColor(Color.TRANSPARENT);
+        content.addView(pageHost, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER_VERTICAL);
         nav.setPadding(dp(8), dp(6), dp(8), dp(8));
-        nav.setBackgroundColor(NAV_BG);
+        nav.setBackground(glassDrawable(0));
         nav.setElevation(dp(12));
 
         String[] labels = {"⌂\n首页", "✎\n记账", "▥\n分析", "⚙\n我的"};
@@ -152,7 +166,7 @@ public class MainActivity extends Activity {
             nav.addView(item, lp);
             navItems[i] = item;
         }
-        root.addView(nav);
+        content.addView(nav);
         updateNav();
         return root;
     }
@@ -174,16 +188,285 @@ public class MainActivity extends Activity {
         FinanceDb.Plan plan = db.getPlan(cycleKey(now));
 
         LinearLayout body = pageBody();
-        body.addView(homeTopBar());
-        body.addView(homeBudgetCard(s, plan), cardParams(0));
-        body.addView(periodCard(now), cardParams(10));
-        body.addView(todaySummary(), cardParams(10));
-        body.addView(sectionLabel("快捷操作", null));
-        body.addView(quickActions(), cardParams(6));
-        body.addView(homeMiniMetrics(s), cardParams(10));
+        body.addView(v14BrandHeader());
+        body.addView(v12CycleHeadline(now));
+        body.addView(v12HeroBudgetCard(now, s, plan), cardParams(0));
+        body.addView(v12CompactMetrics(s), cardParams(10));
+        body.addView(v12ChartCard("每日消费趋势", "观察这个周期每天花了多少", new LineChartView(dailySeries(cycle[0], cycle[1]), BLUE, dayLabel(cycle[0]), dayLabel(Math.max(cycle[0], cycle[1] - 86400000L)))), cardParams(10));
+        body.addView(v12CategoryCard(now), cardParams(10));
         body.addView(goalCard(s, plan), cardParams(10));
         body.addView(recentCard(), cardParams(10));
         mount(body);
+    }
+
+    private View v14BrandHeader() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text("Moeny Board", 27, true, TEXT);
+        box.addView(title);
+        TextView sub = text(cycleModeLabel() + " · 轻点消费卡片查看明细", 12, false, MUTED);
+        sub.setPadding(0, dp(5), 0, dp(15));
+        box.addView(sub);
+        return box;
+    }
+
+    private View v12CycleHeadline(Calendar now) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("本周期", 23, true, TEXT);
+        TextView pill = text(compactCycle(now), 12, true, BLUE);
+        pill.setGravity(Gravity.CENTER);
+        pill.setPadding(dp(11), dp(6), dp(11), dp(6));
+        pill.setBackground(glassTintDrawable(BLUE_SOFT, 14));
+        pill.setOnClickListener(v -> showCycleSettings());
+        row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(pill);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(2), dp(2), dp(2), dp(9));
+        row.setLayoutParams(lp);
+        return row;
+    }
+
+    private View v12HeroBudgetCard(Calendar now, FinanceDb.Summary s, FinanceDb.Plan p) {
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(20), dp(20), dp(20), dp(20));
+        hero.setBackground(glassHeroDrawable(24));
+        hero.setElevation(dp(5));
+
+        int soft = Color.rgb(220, 224, 255);
+        hero.addView(text("本周期可用预算", 13, true, soft));
+        double remaining = p.budget - s.expense;
+        String big = p.budget > 0 ? (remaining >= 0 ? "¥" + money.format(remaining) : "-¥" + money.format(-remaining)) : "未设置额度";
+        TextView amount = text(big, p.budget > 0 ? 31 : 23, true, Color.WHITE);
+        amount.setPadding(0, dp(7), 0, dp(14));
+        hero.addView(amount);
+
+        LinearLayout lower = new LinearLayout(this);
+        lower.setOrientation(LinearLayout.HORIZONTAL);
+        lower.setGravity(Gravity.CENTER_VERTICAL);
+        double rate = p.budget > 0 ? s.expense / p.budget : 0;
+        RingProgressView ring = new RingProgressView(rate, Color.rgb(126, 114, 255), Color.argb(80, 255, 255, 255), Color.WHITE);
+        lower.addView(ring, new LinearLayout.LayoutParams(dp(104), dp(104)));
+
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding(dp(18), 0, 0, 0);
+        info.addView(v14HeroStat("预算已用", "¥" + money.format(s.expense), soft));
+        info.addView(v14HeroStat("预算上限", p.budget > 0 ? "¥" + money.format(p.budget) : "待设置", soft));
+        info.addView(v14HeroStat("周期", compactCycle(now), soft));
+        lower.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        hero.addView(lower);
+        hero.setOnClickListener(v -> showExpenseDetails());
+        return hero;
+    }
+
+    private View v14HeroStat(String label, String value, int soft) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView l = text(label, 12, false, soft);
+        TextView v = text(value, 13, true, Color.WHITE);
+        v.setGravity(Gravity.END);
+        row.addView(l, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(v);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(4), 0, dp(4));
+        row.setLayoutParams(lp);
+        return row;
+    }
+
+    private View v12CompactMetrics(FinanceDb.Summary s) {
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.HORIZONTAL);
+        outer.setPadding(0, dp(2), 0, dp(2));
+        outer.addView(v12MetricPill("收入", s.income, GREEN, GREEN_SOFT, null), weightMargin(3));
+        outer.addView(v12MetricPill("消费", s.expense, RED, RED_SOFT, this::showExpenseDetails), weightMargin(3));
+        outer.addView(v12MetricPill("负债", s.debt, ORANGE, ORANGE_SOFT, null), weightMargin(3));
+        outer.addView(v12MetricPill("结余", s.net(), BLUE, BLUE_SOFT, null), weightMargin(3));
+        return outer;
+    }
+
+    private View v12MetricPill(String label, double value, int accent, int soft, Runnable action) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(7), dp(12), dp(7), dp(12));
+        box.setBackground(glassTintDrawable(soft, 18));
+        box.addView(text(label, 11, true, accent));
+        TextView v = text(shortMoney(value), 13, true, TEXT);
+        v.setPadding(0, dp(4), 0, 0);
+        box.addView(v);
+        if (action != null) box.setOnClickListener(x -> action.run());
+        return box;
+    }
+
+    private View v12ChartCard(String title, String subtitle, View chart) {
+        LinearLayout c = card();
+        c.addView(text(title, 17, true, TEXT));
+        TextView sub = text(subtitle, 12, false, MUTED);
+        sub.setPadding(0, dp(4), 0, dp(8));
+        c.addView(sub);
+        c.addView(chart, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180)));
+        c.setOnClickListener(v -> showExpenseDetails());
+        return c;
+    }
+
+    private View v12CategoryCard(Calendar now) {
+        long[] r = cycleRange(now);
+        Map<String, Double> map = db.getPurposeTotals(FinanceDb.TYPE_EXPENSE, r[0], r[1]);
+        FinanceDb.Summary s = db.getSummary(r[0], r[1]);
+        LinearLayout c = card();
+        c.addView(text("消费分类占比", 17, true, TEXT));
+        TextView sub = text("看看钱主要花在哪些地方 · 点击查看每笔明细", 12, false, MUTED);
+        sub.setPadding(0, dp(4), 0, dp(12));
+        c.addView(sub);
+
+        List<String> labels = new ArrayList<>();
+        List<Double> values = new ArrayList<>();
+        int take = 0;
+        for (Map.Entry<String, Double> e : map.entrySet()) {
+            if (take++ >= 5) break;
+            labels.add(e.getKey());
+            values.add(e.getValue());
+        }
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        DonutChartView donut = new DonutChartView(values, s.expense);
+        row.addView(donut, new LinearLayout.LayoutParams(dp(128), dp(128)));
+        LinearLayout legend = new LinearLayout(this);
+        legend.setOrientation(LinearLayout.VERTICAL);
+        legend.setPadding(dp(12), 0, 0, 0);
+        if (labels.isEmpty()) legend.addView(text("暂无消费记录", 13, false, MUTED));
+        else {
+            double total = 0; for (double v : values) total += v;
+            int[] colors = chartColors();
+            for (int i = 0; i < labels.size(); i++) legend.addView(legendRow(labels.get(i), values.get(i), total, colors[i % colors.length]));
+        }
+        row.addView(legend, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        c.addView(row);
+        c.setOnClickListener(v -> showExpenseDetails());
+        return c;
+    }
+
+    private void showExpenseDetails() {
+        Calendar now = Calendar.getInstance();
+        long[] range = cycleRange(now);
+        FinanceDb.Summary s = db.getSummary(range[0], range[1]);
+        Map<String, Double> totals = db.getPurposeTotals(FinanceDb.TYPE_EXPENSE, range[0], range[1]);
+        List<FinanceDb.Record> rows = db.getRecords(FinanceDb.TYPE_EXPENSE, range[0], range[1], 500);
+
+        LinearLayout body = pageBody();
+        body.addView(backTopBar("消费明细", this::showHome));
+
+        LinearLayout summary = card();
+        summary.addView(text("本周期消费", 12, true, MUTED));
+        TextView total = text("¥" + money.format(s.expense), 30, true, RED);
+        total.setPadding(0, dp(5), 0, dp(4));
+        summary.addView(total);
+        summary.addView(text(displayCycle(now) + "  ·  " + rows.size() + " 笔", 11, false, MUTED));
+        body.addView(summary, cardParams(0));
+
+        body.addView(sectionLabel("钱花在哪里", null));
+        if (totals.isEmpty()) {
+            LinearLayout empty = card();
+            TextView t = text("本周期还没有消费记录", 13, false, MUTED);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(20), 0, dp(20));
+            empty.addView(t);
+            body.addView(empty, cardParams(0));
+        } else {
+            double max = 0; for (double v : totals.values()) max = Math.max(max, v);
+            for (Map.Entry<String, Double> e : totals.entrySet()) {
+                String purpose = e.getKey();
+                double value = e.getValue();
+                LinearLayout c = card();
+                c.setPadding(dp(14), dp(12), dp(14), dp(12));
+                LinearLayout line = new LinearLayout(this);
+                line.setOrientation(LinearLayout.HORIZONTAL);
+                line.setGravity(Gravity.CENTER_VERTICAL);
+                line.addView(categoryIcon(purpose, 38), new LinearLayout.LayoutParams(dp(38), dp(38)));
+                LinearLayout info = new LinearLayout(this);
+                info.setOrientation(LinearLayout.VERTICAL);
+                info.setPadding(dp(10), 0, 0, 0);
+                info.addView(text(purpose, 13, true, TEXT));
+                int count = countExpensePurpose(rows, purpose);
+                info.addView(text(count + " 笔 · 点击查看具体消费", 10, false, MUTED));
+                line.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                line.addView(text("¥" + money.format(value), 13, true, RED));
+                c.addView(line);
+                c.addView(progressLine(max <= 0 ? 0 : value / max, RED), progressParams());
+                c.setOnClickListener(v -> showExpenseCategory(purpose));
+                body.addView(c, cardParams(7));
+            }
+        }
+
+        body.addView(sectionLabel("具体怎么花的", null));
+        if (rows.isEmpty()) {
+            LinearLayout empty = card();
+            TextView t = text("暂无明细", 13, false, MUTED);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(0, dp(18), 0, dp(18));
+            empty.addView(t);
+            body.addView(empty, cardParams(0));
+        } else {
+            for (FinanceDb.Record r : rows) body.addView(expenseDetailRow(r), cardParams(7));
+        }
+        mount(body);
+    }
+
+    private int countExpensePurpose(List<FinanceDb.Record> rows, String purpose) {
+        int count = 0;
+        for (FinanceDb.Record r : rows) if (purpose.equals(r.purpose)) count++;
+        return count;
+    }
+
+    private void showExpenseCategory(String purpose) {
+        long[] range = cycleRange(Calendar.getInstance());
+        List<FinanceDb.Record> all = db.getRecords(FinanceDb.TYPE_EXPENSE, range[0], range[1], 500);
+        LinearLayout body = pageBody();
+        body.addView(backTopBar(purpose + " · 消费明细", this::showExpenseDetails));
+        double total = 0; int count = 0;
+        for (FinanceDb.Record r : all) if (purpose.equals(r.purpose)) { total += r.amount; count++; }
+        LinearLayout top = card();
+        top.addView(text(purpose, 13, true, MUTED));
+        TextView amount = text("¥" + money.format(total), 28, true, RED);
+        amount.setPadding(0, dp(5), 0, dp(3));
+        top.addView(amount);
+        top.addView(text(count + " 笔消费 · " + displayCycle(Calendar.getInstance()), 11, false, MUTED));
+        body.addView(top, cardParams(0));
+        for (FinanceDb.Record r : all) if (purpose.equals(r.purpose)) body.addView(expenseDetailRow(r), cardParams(7));
+        mount(body);
+    }
+
+    private View expenseDetailRow(FinanceDb.Record r) {
+        LinearLayout c = card();
+        c.setPadding(dp(14), dp(11), dp(14), dp(11));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(categoryIcon(r.purpose, 40), new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding(dp(10), 0, 0, 0);
+        info.addView(text(r.purpose, 13, true, TEXT));
+        String detail = dayFmt.format(new Date(r.occurredAt)) + "  " + timeFmt.format(new Date(r.occurredAt));
+        if (r.note != null && !r.note.trim().isEmpty()) detail += "  ·  " + r.note.trim();
+        info.addView(text(detail, 10, false, MUTED));
+        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(text("-¥" + money.format(r.amount), 14, true, RED));
+        c.addView(row);
+        c.setOnLongClickListener(v -> {
+            new AlertDialog.Builder(this).setTitle("删除这笔消费？")
+                    .setMessage(r.purpose + "  ¥" + money.format(r.amount))
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("删除", (d, w) -> { db.deleteRecord(r.id); showExpenseDetails(); })
+                    .show();
+            return true;
+        });
+        return c;
     }
 
     private View homeTopBar() {
@@ -194,7 +477,7 @@ public class MainActivity extends Activity {
         logo.setGravity(Gravity.CENTER);
         logo.setBackground(gradientRounded(Color.rgb(62, 126, 244), Color.rgb(63, 161, 240), 9));
         row.addView(logo, new LinearLayout.LayoutParams(dp(32), dp(32)));
-        TextView title = text("MoneyBoard", 20, true, TEXT);
+        TextView title = text("Moeny Board", 20, true, TEXT);
         title.setPadding(dp(9), 0, 0, 0);
         row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         TextView gear = text("⚙", 21, false, TEXT);
@@ -832,14 +1115,19 @@ public class MainActivity extends Activity {
     }
 
     private void showSettings(){
-        selectNav(3);LinearLayout body=pageBody();body.addView(simpleTopBar("设置",null));
-        body.addView(settingsRow("▣","记账周期","每月 "+cycleDay()+" 日",this::showCycleSettings),cardParams(0));
+        selectNav(3);
+        LinearLayout body=pageBody();
+        body.addView(simpleTopBar("设置",null));
+        body.addView(settingsRow("▣","记账周期",cycleSettingsSubtitle(),this::showCycleSettings),cardParams(0));
         body.addView(settingsRow("☷","分类预算","设置各用途消费额度",this::showBudget),cardParams(7));
-        body.addView(settingsRow("↥","数据备份","导出 MoneyBoard 备份文件",this::backupData),cardParams(7));
+        body.addView(settingsRow("↥","数据备份","导出 Moeny Board 备份文件",this::backupData),cardParams(7));
         body.addView(settingsRow("↧","数据恢复","从备份文件恢复",this::restoreData),cardParams(7));
         body.addView(settingsRow("⇩","导出数据","导出 CSV 账单",this::exportCsv),cardParams(7));
         body.addView(settingsRow("◐","主题设置",themeLabel(),this::showThemeDialog),cardParams(7));
-        body.addView(settingsRow("ⓘ","关于我们","MoneyBoard v1.3.0",()->new AlertDialog.Builder(this).setTitle("MoneyBoard").setMessage("一个完全离线、本地存储的个人记账 App。\n\n记账周期默认每月 15 日到次月 15 日。\n数据只保存在你的手机。 ").setPositiveButton("知道了",null).show()),cardParams(7));
+        body.addView(settingsRow("ⓘ","关于我们","Moeny Board v1.4.0",()->new AlertDialog.Builder(this)
+                .setTitle("Moeny Board")
+                .setMessage("一个完全离线、本地存储的个人记账 App。\n\n支持按月循环周期和自定义日期周期。\n看板消费卡片可直接查看分类与逐笔消费。\n数据只保存在你的手机。")
+                .setPositiveButton("知道了",null).show()),cardParams(7));
         mount(body);
     }
 
@@ -848,19 +1136,115 @@ public class MainActivity extends Activity {
     }
 
     private void showCycleSettings(){
-        LinearLayout body=pageBody();body.addView(backTopBar("周期设置",this::showSettings));
-        LinearLayout c=card();c.addView(text("记账周期起始日",13,true,TEXT));final int[] day={cycleDay()};TextView number=text(day[0]+" 日",27,true,TEXT);number.setGravity(Gravity.CENTER);number.setPadding(0,dp(12),0,dp(12));
-        LinearLayout adjust=new LinearLayout(this);adjust.setOrientation(LinearLayout.HORIZONTAL);TextView minus=outlineButton("−");TextView plus=outlineButton("＋");adjust.addView(minus,new LinearLayout.LayoutParams(dp(48),dp(44)));adjust.addView(number,new LinearLayout.LayoutParams(0,dp(44),1f));adjust.addView(plus,new LinearLayout.LayoutParams(dp(48),dp(44)));minus.setOnClickListener(v->{day[0]=Math.max(1,day[0]-1);number.setText(day[0]+" 日");});plus.setOnClickListener(v->{day[0]=Math.min(28,day[0]+1);number.setText(day[0]+" 日");});c.addView(adjust);
-        TextView hint=text("每月 "+day[0]+" 日 00:00 开始新的记账周期。默认是 15 日。",11,false,MUTED);hint.setPadding(0,dp(12),0,0);c.addView(hint);body.addView(c,cardParams(0));
-        LinearLayout current=rowCard(BLUE_SOFT);current.addView(iconBubble("ⓘ",BLUE,dark?Color.rgb(34,65,95):Color.WHITE),new LinearLayout.LayoutParams(dp(38),dp(38)));LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.setPadding(dp(10),0,0,0);info.addView(text("当前周期",11,true,BLUE));info.addView(text(displayCycle(Calendar.getInstance()),13,true,TEXT));current.addView(info);body.addView(current,cardParams(10));
-        TextView save=filledButton("保存周期设置",BLUE);save.setOnClickListener(v->{prefs.edit().putInt("cycle_start_day",day[0]).apply();toast("周期起始日已保存");showCycleSettings();});body.addView(save,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(52)));mount(body);
+        LinearLayout body=pageBody();
+        body.addView(backTopBar("周期设置",this::showSettings));
+
+        LinearLayout monthly = card();
+        monthly.setPadding(dp(16),dp(15),dp(16),dp(15));
+        LinearLayout mh = new LinearLayout(this); mh.setOrientation(LinearLayout.HORIZONTAL); mh.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout mi = new LinearLayout(this); mi.setOrientation(LinearLayout.VERTICAL);
+        mi.addView(text("按月循环",14,true,TEXT));
+        mi.addView(text("例如：每月 15 日 → 次月 15 日",11,false,MUTED));
+        mh.addView(mi,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));
+        TextView mt = text(!isCustomCycle() ? "使用中" : "设置",11,true,!isCustomCycle()?GREEN:BLUE);
+        mt.setPadding(dp(10),dp(6),dp(10),dp(6));
+        mt.setBackground(glassTintDrawable(!isCustomCycle()?GREEN_SOFT:BLUE_SOFT,12));
+        mh.addView(mt); monthly.addView(mh);
+        TextView mp = text(monthlyCyclePreview(),12,true,BLUE); mp.setPadding(0,dp(12),0,0); monthly.addView(mp);
+        monthly.setOnClickListener(v->showMonthlyCycleEditor());
+        body.addView(monthly,cardParams(0));
+
+        LinearLayout custom = card();
+        custom.setPadding(dp(16),dp(15),dp(16),dp(15));
+        LinearLayout ch = new LinearLayout(this); ch.setOrientation(LinearLayout.HORIZONTAL); ch.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout ci = new LinearLayout(this); ci.setOrientation(LinearLayout.VERTICAL);
+        ci.addView(text("自定义日期",14,true,TEXT));
+        ci.addView(text("手动选择一个完整的开始日和结束日",11,false,MUTED));
+        ch.addView(ci,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));
+        TextView ct = text(isCustomCycle() ? "使用中" : "设置",11,true,isCustomCycle()?GREEN:BLUE);
+        ct.setPadding(dp(10),dp(6),dp(10),dp(6));
+        ct.setBackground(glassTintDrawable(isCustomCycle()?GREEN_SOFT:BLUE_SOFT,12));
+        ch.addView(ct); custom.addView(ch);
+        TextView cp = text(customCyclePreview(),12,true,PURPLE); cp.setPadding(0,dp(12),0,0); custom.addView(cp);
+        custom.setOnClickListener(v->showCustomCycleEditor());
+        body.addView(custom,cardParams(10));
+
+        LinearLayout current=card();
+        current.setBackground(glassTintDrawable(BLUE_SOFT,18));
+        current.addView(text("当前记账周期",12,true,BLUE));
+        TextView range=text(displayCycleFull(Calendar.getInstance()),15,true,TEXT);
+        range.setPadding(0,dp(7),0,dp(5));
+        range.setLineSpacing(dp(2),1.05f);
+        current.addView(range);
+        current.addView(text("预算、看板、用途排行和本期统计都会按这个周期计算。",11,false,MUTED));
+        body.addView(current,cardParams(10));
+        mount(body);
+    }
+
+    private void showMonthlyCycleEditor(){
+        LinearLayout body=pageBody();
+        body.addView(backTopBar("按月循环周期",this::showCycleSettings));
+        final int[] day={cycleDay()};
+        LinearLayout c=card();
+        c.addView(text("每月起始日",13,true,TEXT));
+        TextView number=text(String.valueOf(day[0]),36,true,TEXT);
+        number.setGravity(Gravity.CENTER);
+        number.setMinHeight(dp(70));
+        LinearLayout adjust=new LinearLayout(this); adjust.setOrientation(LinearLayout.HORIZONTAL); adjust.setGravity(Gravity.CENTER_VERTICAL);
+        TextView minus=outlineButton("−"); TextView plus=outlineButton("＋");
+        adjust.addView(minus,new LinearLayout.LayoutParams(dp(54),dp(50)));
+        adjust.addView(number,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));
+        adjust.addView(plus,new LinearLayout.LayoutParams(dp(54),dp(50)));
+        c.addView(adjust);
+        TextView unit=text("日",13,true,MUTED); unit.setGravity(Gravity.CENTER); c.addView(unit);
+        final TextView preview=text(monthlyPreviewForDay(day[0]),12,false,MUTED); preview.setPadding(0,dp(14),0,0); preview.setGravity(Gravity.CENTER); c.addView(preview);
+        Runnable refresh=()->{number.setText(String.valueOf(day[0]));preview.setText(monthlyPreviewForDay(day[0]));};
+        minus.setOnClickListener(v->{day[0]=Math.max(1,day[0]-1);refresh.run();});
+        plus.setOnClickListener(v->{day[0]=Math.min(28,day[0]+1);refresh.run();});
+        body.addView(c,cardParams(0));
+        TextView save=filledButton("使用按月循环周期",BLUE);
+        save.setOnClickListener(v->{prefs.edit().putString("cycle_mode","monthly").putInt("cycle_start_day",day[0]).apply();toast("周期已更新");showCycleSettings();});
+        LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(52));slp.setMargins(0,dp(12),0,0);body.addView(save,slp);
+        mount(body);
+    }
+
+    private void showCustomCycleEditor(){
+        long[] current=cycleRange(Calendar.getInstance());
+        final Calendar[] start={Calendar.getInstance()}; start[0].setTimeInMillis(isCustomCycle()?customCycleStartMs():current[0]); zeroTime(start[0]);
+        final Calendar[] end={Calendar.getInstance()}; end[0].setTimeInMillis(isCustomCycle()?customCycleEndMs():current[1]); zeroTime(end[0]);
+        LinearLayout body=pageBody();
+        body.addView(backTopBar("自定义日期周期",this::showCycleSettings));
+        LinearLayout c=card();
+        c.addView(text("选择周期边界",13,true,TEXT));
+        TextView hint=text("结束日按 00:00 作为下一个周期边界，例如 8月15日 → 9月15日。",11,false,MUTED);hint.setPadding(0,dp(5),0,dp(12));c.addView(hint);
+        TextView startBtn=outlineButton(formatFullDate(start[0].getTimeInMillis())+" 00:00");
+        TextView endBtn=outlineButton(formatFullDate(end[0].getTimeInMillis())+" 00:00");
+        c.addView(text("开始",11,true,BLUE)); c.addView(startBtn,fieldParams());
+        TextView endLabel=text("结束",11,true,PURPLE); endLabel.setPadding(0,dp(12),0,0); c.addView(endLabel); c.addView(endBtn,fieldParams());
+        startBtn.setOnClickListener(v->showDatePicker(start[0],picked->{start[0]=picked;startBtn.setText(formatFullDate(start[0].getTimeInMillis())+" 00:00");}));
+        endBtn.setOnClickListener(v->showDatePicker(end[0],picked->{end[0]=picked;endBtn.setText(formatFullDate(end[0].getTimeInMillis())+" 00:00");}));
+        body.addView(c,cardParams(0));
+        TextView save=filledButton("使用这个自定义周期",PURPLE);
+        save.setOnClickListener(v->{
+            long sMs=start[0].getTimeInMillis(),eMs=end[0].getTimeInMillis();
+            if(eMs<=sMs){toast("结束日期必须晚于开始日期");return;}
+            prefs.edit().putString("cycle_mode","custom").putLong("custom_cycle_start",sMs).putLong("custom_cycle_end",eMs).apply();
+            toast("自定义周期已保存");showCycleSettings();
+        });
+        LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(52));slp.setMargins(0,dp(12),0,0);body.addView(save,slp);
+        mount(body);
+    }
+
+    private interface CalendarPicked { void onPicked(Calendar c); }
+    private void showDatePicker(Calendar initial,CalendarPicked done){
+        new DatePickerDialog(this,(v,y,m,d)->{Calendar c=Calendar.getInstance();c.set(y,m,d);zeroTime(c);done.onPicked(c);},initial.get(Calendar.YEAR),initial.get(Calendar.MONTH),initial.get(Calendar.DAY_OF_MONTH)).show();
     }
 
     private void backupData(){
-        Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"MoneyBoard_backup_"+dateFmt.format(new Date())+".json");startActivityForResult(i,REQ_BACKUP);
+        Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"Moeny_Board_backup_"+dateFmt.format(new Date())+".json");startActivityForResult(i,REQ_BACKUP);
     }
     private void restoreData(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");startActivityForResult(i,REQ_RESTORE);}
-    private void exportCsv(){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("text/csv");i.putExtra(Intent.EXTRA_TITLE,"MoneyBoard_账单_"+dateFmt.format(new Date())+".csv");startActivityForResult(i,REQ_CSV);}
+    private void exportCsv(){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("text/csv");i.putExtra(Intent.EXTRA_TITLE,"Moeny_Board_账单_"+dateFmt.format(new Date())+".csv");startActivityForResult(i,REQ_CSV);}
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){super.onActivityResult(requestCode,resultCode,data);if(resultCode!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();try{if(requestCode==REQ_BACKUP){writeUri(uri,db.exportJson());toast("备份完成");}else if(requestCode==REQ_CSV){writeUri(uri,"\uFEFF"+db.exportCsv());toast("CSV 已导出");}else if(requestCode==REQ_RESTORE){String json=readUri(uri);new AlertDialog.Builder(this).setTitle("恢复备份？").setMessage("恢复会覆盖当前账目、预算和分类预算。").setNegativeButton("取消",null).setPositiveButton("恢复",(d,w)->{try{db.importJson(json);toast("恢复完成");showHome();}catch(Exception e){toast("恢复失败："+e.getMessage());}}).show();}}catch(Exception e){toast("操作失败："+e.getMessage());}}
     private void writeUri(Uri uri,String content)throws Exception{try(OutputStream os=getContentResolver().openOutputStream(uri)){if(os==null)throw new Exception("无法打开文件");os.write(content.getBytes(StandardCharsets.UTF_8));}}
@@ -883,13 +1267,59 @@ public class MainActivity extends Activity {
 
     private List<Double> dailySeries(long startMs,long endMs){List<Double> out=new ArrayList<>();Calendar c=Calendar.getInstance();c.setTimeInMillis(startMs);while(c.getTimeInMillis()<endMs&&out.size()<62){Calendar n=(Calendar)c.clone();n.add(Calendar.DAY_OF_MONTH,1);out.add(db.getSummary(c.getTimeInMillis(),Math.min(n.getTimeInMillis(),endMs)).expense);c=n;}return out;}
 
-    private long[] cycleRange(Calendar source){Calendar s=cycleStart(source);Calendar e=(Calendar)s.clone();e.add(Calendar.MONTH,1);return new long[]{s.getTimeInMillis(),e.getTimeInMillis()};}
-    private Calendar cycleStart(Calendar source){Calendar s=(Calendar)source.clone();zeroTime(s);int day=cycleDay();if(s.get(Calendar.DAY_OF_MONTH)<day)s.add(Calendar.MONTH,-1);int max=s.getActualMaximum(Calendar.DAY_OF_MONTH);s.set(Calendar.DAY_OF_MONTH,Math.min(day,max));zeroTime(s);return s;}
+    private long[] cycleRange(Calendar source){
+        if(isCustomCycle()){
+            long start=customCycleStartMs(),end=customCycleEndMs();
+            if(end>start)return new long[]{start,end};
+        }
+        Calendar s=cycleStart(source);Calendar e=(Calendar)s.clone();e.add(Calendar.MONTH,1);
+        return new long[]{s.getTimeInMillis(),e.getTimeInMillis()};
+    }
+
+    private Calendar cycleStart(Calendar source){
+        Calendar s=(Calendar)source.clone();zeroTime(s);int day=cycleDay();
+        if(s.get(Calendar.DAY_OF_MONTH)<day)s.add(Calendar.MONTH,-1);
+        int max=s.getActualMaximum(Calendar.DAY_OF_MONTH);s.set(Calendar.DAY_OF_MONTH,Math.min(day,max));zeroTime(s);return s;
+    }
+
     private long[] weekRange(Calendar source){Calendar s=(Calendar)source.clone();int dow=s.get(Calendar.DAY_OF_WEEK);int delta=dow==Calendar.SUNDAY?-6:Calendar.MONDAY-dow;s.add(Calendar.DAY_OF_MONTH,delta);zeroTime(s);Calendar e=(Calendar)s.clone();e.add(Calendar.DAY_OF_MONTH,7);return new long[]{s.getTimeInMillis(),e.getTimeInMillis()};}
     private long[] monthRange(Calendar source){Calendar s=(Calendar)source.clone();s.set(Calendar.DAY_OF_MONTH,1);zeroTime(s);Calendar e=(Calendar)s.clone();e.add(Calendar.MONTH,1);return new long[]{s.getTimeInMillis(),e.getTimeInMillis()};}
     private int cycleDay(){return prefs==null?15:Math.max(1,Math.min(28,prefs.getInt("cycle_start_day",15)));}
-    private String cycleKey(Calendar source){Calendar s=cycleStart(source);if(cycleDay()==15)return String.format(Locale.US,"%04d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1);return String.format(Locale.US,"%04d-%02d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH));}
-    private String displayCycle(Calendar source){Calendar s=cycleStart(source);Calendar e=(Calendar)s.clone();e.add(Calendar.MONTH,1);return String.format(Locale.CHINA,"%d月%d日 - %d月%d日",s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH),e.get(Calendar.MONTH)+1,e.get(Calendar.DAY_OF_MONTH));}
+    private boolean isCustomCycle(){return prefs!=null&&"custom".equals(prefs.getString("cycle_mode","monthly"))&&customCycleEndMs()>customCycleStartMs();}
+    private long customCycleStartMs(){return prefs==null?0:prefs.getLong("custom_cycle_start",0);}
+    private long customCycleEndMs(){return prefs==null?0:prefs.getLong("custom_cycle_end",0);}
+
+    private String cycleKey(Calendar source){
+        if(isCustomCycle())return "custom-"+new SimpleDateFormat("yyyyMMdd",Locale.US).format(new Date(customCycleStartMs()))+"-"+new SimpleDateFormat("yyyyMMdd",Locale.US).format(new Date(customCycleEndMs()));
+        Calendar s=cycleStart(source);
+        if(cycleDay()==15)return String.format(Locale.US,"%04d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1);
+        return String.format(Locale.US,"%04d-%02d-%02d",s.get(Calendar.YEAR),s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private String displayCycle(Calendar source){
+        long[] r=cycleRange(source);Calendar s=Calendar.getInstance();s.setTimeInMillis(r[0]);Calendar e=Calendar.getInstance();e.setTimeInMillis(r[1]);
+        return String.format(Locale.CHINA,"%d月%d日 - %d月%d日",s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH),e.get(Calendar.MONTH)+1,e.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private String compactCycle(Calendar source){
+        long[] r=cycleRange(source);Calendar s=Calendar.getInstance();s.setTimeInMillis(r[0]);Calendar e=Calendar.getInstance();e.setTimeInMillis(r[1]);
+        return String.format(Locale.US,"%02d/%02d - %02d/%02d",s.get(Calendar.MONTH)+1,s.get(Calendar.DAY_OF_MONTH),e.get(Calendar.MONTH)+1,e.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private String displayCycleFull(Calendar source){
+        long[] r=cycleRange(source);return formatFullDate(r[0])+" 00:00  →  "+formatFullDate(r[1])+" 00:00";
+    }
+
+    private String formatFullDate(long ms){return new SimpleDateFormat("yyyy年MM月dd日",Locale.CHINA).format(new Date(ms));}
+    private String dayLabel(long ms){return new SimpleDateFormat("M月d日",Locale.CHINA).format(new Date(ms));}
+    private String cycleModeLabel(){return isCustomCycle()?"自定义周期":"每月 "+cycleDay()+" 日切换新周期";}
+    private String cycleSettingsSubtitle(){return isCustomCycle()?"自定义日期 · "+displayCycle(Calendar.getInstance()):"每月 "+cycleDay()+" 日开始";}
+    private String monthlyCyclePreview(){return monthlyPreviewForDay(cycleDay());}
+    private String monthlyPreviewForDay(int day){
+        Calendar now=Calendar.getInstance();Calendar s=(Calendar)now.clone();zeroTime(s);if(s.get(Calendar.DAY_OF_MONTH)<day)s.add(Calendar.MONTH,-1);s.set(Calendar.DAY_OF_MONTH,Math.min(day,s.getActualMaximum(Calendar.DAY_OF_MONTH)));Calendar e=(Calendar)s.clone();e.add(Calendar.MONTH,1);e.set(Calendar.DAY_OF_MONTH,Math.min(day,e.getActualMaximum(Calendar.DAY_OF_MONTH)));
+        return formatFullDate(s.getTimeInMillis())+" → "+formatFullDate(e.getTimeInMillis());
+    }
+    private String customCyclePreview(){return isCustomCycle()?formatFullDate(customCycleStartMs())+" → "+formatFullDate(customCycleEndMs()):"尚未设置自定义日期";}
     private int daysRemaining(Calendar source){long[] r=cycleRange(source);long diff=r[1]-source.getTimeInMillis();return Math.max(0,(int)Math.ceil(diff/86400000.0));}
     private void zeroTime(Calendar c){c.set(Calendar.HOUR_OF_DAY,0);c.set(Calendar.MINUTE,0);c.set(Calendar.SECOND,0);c.set(Calendar.MILLISECOND,0);}
 
@@ -905,15 +1335,15 @@ public class MainActivity extends Activity {
     private TextView categoryIcon(String purpose,int size){String icon="•";int color=BLUE,soft=BLUE_SOFT;String p=purpose==null?"":purpose;if(p.contains("餐")||p.contains("吃")||p.contains("咖啡")){icon="🍴";color=RED;soft=RED_SOFT;}else if(p.contains("购")||p.contains("买")){icon="▣";color=PURPLE;soft=PURPLE_SOFT;}else if(p.contains("交通")||p.contains("地铁")||p.contains("车")){icon="▰";color=BLUE;soft=BLUE_SOFT;}else if(p.contains("日用")||p.contains("房")){icon="⌂";color=GREEN;soft=GREEN_SOFT;}else if(p.contains("医")){icon="+";color=GREEN;soft=GREEN_SOFT;}else if(p.contains("娱乐")){icon="♬";color=ORANGE;soft=ORANGE_SOFT;}TextView t=text(icon,size<=34?13:15,true,color);t.setGravity(Gravity.CENTER);t.setBackground(rounded(soft,0,99));return t;}
     private TextView iconBubble(String icon,int color,int fill){TextView t=text(icon,15,true,color);t.setGravity(Gravity.CENTER);t.setBackground(rounded(fill,0,12));return t;}
 
-    private LinearLayout rowCard(int fill){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.HORIZONTAL);c.setGravity(Gravity.CENTER_VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));c.setBackground(rounded(fill,0,17));return c;}
-    private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(15),dp(16),dp(15));c.setBackground(rounded(CARD,LINE,18));c.setElevation(dark?0:dp(1));return c;}
+    private LinearLayout rowCard(int fill){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.HORIZONTAL);c.setGravity(Gravity.CENTER_VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));c.setBackground(glassTintDrawable(fill,17));c.setElevation(dark?0:dp(2));return c;}
+    private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(15),dp(16),dp(15));c.setBackground(glassDrawable(18));c.setElevation(dark?0:dp(3));return c;}
     private LinearLayout pageBody(){LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(18),dp(12),dp(18),dp(22));return body;}
     private void mount(LinearLayout body){ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.addView(body,new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));pageHost.removeAllViews();pageHost.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT));}
 
     private TextView text(String s,int sp,boolean bold,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(sp);t.setTextColor(color);t.setTypeface(Typeface.create("sans",bold?Typeface.BOLD:Typeface.NORMAL));t.setIncludeFontPadding(false);return t;}
-    private EditText edit(String hint){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(13);e.setSingleLine(true);e.setPadding(dp(14),0,dp(14),0);e.setBackground(ripple(INPUT_BG,0,14));return e;}
+    private EditText edit(String hint){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(13);e.setSingleLine(true);e.setPadding(dp(14),0,dp(14),0);e.setBackground(glassTintDrawable(INPUT_BG,14));return e;}
     private TextView filledButton(String label,int color){TextView t=text(label,14,true,Color.WHITE);t.setGravity(Gravity.CENTER);t.setBackground(ripple(color,0,16));return t;}
-    private TextView outlineButton(String label){TextView t=text(label,14,true,TEXT);t.setGravity(Gravity.CENTER);t.setBackground(ripple(CARD,LINE,13));return t;}
+    private TextView outlineButton(String label){TextView t=text(label,14,true,TEXT);t.setGravity(Gravity.CENTER);t.setBackground(glassDrawable(13));return t;}
 
     private View progressLine(double rate,int color){double safe=Math.max(0,Math.min(1,rate));LinearLayout track=new LinearLayout(this);track.setOrientation(LinearLayout.HORIZONTAL);track.setBackground(rounded(dark?Color.rgb(49,60,72):Color.rgb(234,237,242),0,99));if(safe>0){View fill=new View(this);fill.setBackground(rounded(color,0,99));track.addView(fill,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.MATCH_PARENT,(float)safe));}if(safe<1){View rest=new View(this);track.addView(rest,new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.MATCH_PARENT,(float)(1-safe)));}return track;}
     private LinearLayout.LayoutParams progressParams(){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(7));lp.setMargins(0,dp(9),0,0);return lp;}
@@ -922,6 +1352,29 @@ public class MainActivity extends Activity {
     private LinearLayout.LayoutParams weight(){return new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f);}
     private LinearLayout.LayoutParams weightMargin(int m){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f);lp.setMargins(dp(m),0,dp(m),0);return lp;}
 
+    private int alphaColor(int color,int alpha){return Color.argb(alpha,Color.red(color),Color.green(color),Color.blue(color));}
+    private GradientDrawable glassDrawable(int radius){
+        int top=dark?Color.argb(185,31,42,55):Color.argb(205,255,255,255);
+        int bottom=dark?Color.argb(145,20,29,40):Color.argb(150,255,255,255);
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{top,bottom});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),dark?Color.argb(50,255,255,255):Color.argb(175,255,255,255));
+        return d;
+    }
+    private GradientDrawable glassTintDrawable(int tint,int radius){
+        int a1=dark?175:190,a2=dark?125:145;
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{alphaColor(tint,a1),alphaColor(tint,a2)});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),dark?Color.argb(46,255,255,255):Color.argb(160,255,255,255));
+        return d;
+    }
+    private GradientDrawable glassHeroDrawable(int radius){
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.argb(242,28,39,88),Color.argb(232,74,61,168),Color.argb(224,81,76,196)});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),Color.argb(90,255,255,255));
+        return d;
+    }
+
     private Drawable ripple(int fill,int stroke,int radius){GradientDrawable content=rounded(fill,stroke,radius);GradientDrawable mask=rounded(Color.WHITE,0,radius);return new RippleDrawable(ColorStateList.valueOf(Color.argb(25,0,0,0)),content,mask);}
     private GradientDrawable rounded(int fill,int stroke,int radius){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
     private GradientDrawable gradientRounded(int start,int end,int radius){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{start,end});d.setCornerRadius(dp(radius));return d;}
@@ -929,10 +1382,47 @@ public class MainActivity extends Activity {
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     private void selectNav(int i){selectedNav=i;updateNav();}
 
+    private class GlassBackdropView extends View {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        GlassBackdropView(){super(MainActivity.this);}
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);
+            canvas.drawColor(BG);
+            float w=getWidth(),h=getHeight();
+            drawGlow(canvas,w*0.12f,h*0.12f,Math.max(w,h)*0.42f,dark?Color.argb(45,68,116,255):Color.argb(80,116,157,255));
+            drawGlow(canvas,w*0.92f,h*0.28f,Math.max(w,h)*0.38f,dark?Color.argb(42,132,80,240):Color.argb(75,196,154,255));
+            drawGlow(canvas,w*0.28f,h*0.82f,Math.max(w,h)*0.36f,dark?Color.argb(38,31,187,132):Color.argb(62,94,224,181));
+        }
+        private void drawGlow(Canvas canvas,float x,float y,float radius,int color){
+            paint.setShader(new RadialGradient(x,y,radius,new int[]{color,Color.TRANSPARENT},null,Shader.TileMode.CLAMP));
+            canvas.drawCircle(x,y,radius,paint);
+            paint.setShader(null);
+        }
+    }
+
     private class RingProgressView extends View {
         private final double rate; private final int active,track,textColor; private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         RingProgressView(double rate,int active,int track,int textColor){super(MainActivity.this);this.rate=Math.max(0,rate);this.active=active;this.track=track;this.textColor=textColor;}
         @Override protected void onDraw(Canvas canvas){super.onDraw(canvas);float stroke=dp(8),pad=stroke/2f+dp(4);RectF oval=new RectF(pad,pad,getWidth()-pad,getHeight()-pad);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(stroke);p.setStrokeCap(Paint.Cap.ROUND);p.setColor(track);canvas.drawArc(oval,-90,360,false,p);p.setColor(active);canvas.drawArc(oval,-90,(float)(360*Math.min(1,rate)),false,p);p.setStyle(Paint.Style.FILL);p.setTextAlign(Paint.Align.CENTER);p.setTypeface(Typeface.DEFAULT_BOLD);p.setTextSize(dp(13));p.setColor(textColor);canvas.drawText(new DecimalFormat("0%").format(Math.min(1,rate)),getWidth()/2f,getHeight()/2f+dp(5),p);}
+    }
+
+    private class LineChartView extends View {
+        private final List<Double> values; private final int color; private final String startLabel,endLabel; private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        LineChartView(List<Double> values,int color,String startLabel,String endLabel){super(MainActivity.this);this.values=values;this.color=color;this.startLabel=startLabel;this.endLabel=endLabel;}
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);
+            float left=dp(8),top=dp(14),right=getWidth()-dp(8),bottom=getHeight()-dp(22);
+            p.setStrokeWidth(dp(1));p.setColor(LINE);
+            for(int i=0;i<4;i++){float y=top+(bottom-top)*i/3f;canvas.drawLine(left,y,right,y,p);}
+            double max=0;for(double v:values)max=Math.max(max,v);
+            if(values.isEmpty()||max<=0){p.setStyle(Paint.Style.FILL);p.setColor(MUTED);p.setTextAlign(Paint.Align.CENTER);p.setTextSize(dp(12));canvas.drawText("暂无消费数据",getWidth()/2f,getHeight()/2f,p);drawLineLabels(canvas,left,right);return;}
+            Path path=new Path();
+            for(int i=0;i<values.size();i++){float x=left+(right-left)*i/Math.max(1,values.size()-1);float y=bottom-(float)((values.get(i)/max)*(bottom-top));if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}
+            p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(3));p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);p.setColor(color);canvas.drawPath(path,p);
+            p.setStyle(Paint.Style.FILL);p.setColor(color);int step=Math.max(1,values.size()/6);for(int i=0;i<values.size();i+=step){float x=left+(right-left)*i/Math.max(1,values.size()-1);float y=bottom-(float)((values.get(i)/max)*(bottom-top));canvas.drawCircle(x,y,dp(3),p);}
+            drawLineLabels(canvas,left,right);
+        }
+        private void drawLineLabels(Canvas canvas,float left,float right){p.setStyle(Paint.Style.FILL);p.setColor(MUTED);p.setTextSize(dp(10));p.setTextAlign(Paint.Align.LEFT);canvas.drawText(startLabel,left,getHeight()-dp(2),p);p.setTextAlign(Paint.Align.RIGHT);canvas.drawText(endLabel,right,getHeight()-dp(2),p);}
     }
 
     private class DonutChartView extends View {

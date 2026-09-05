@@ -275,7 +275,7 @@ public class FinanceDb extends SQLiteOpenHelper {
     public void importJson(String json) throws Exception {
         JSONObject root = new JSONObject(json);
         if (!"MoneyBoardBackup".equals(root.optString("format"))) {
-            throw new IllegalArgumentException("不是 MoneyBoard 备份文件");
+            throw new IllegalArgumentException("不是 Moeny Board 备份文件");
         }
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();

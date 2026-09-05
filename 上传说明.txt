@@ -1,0 +1,10 @@
+Moeny Board v1.4 GitHub 覆盖包
+
+解压后只需要把这 3 项上传到 GitHub 仓库根目录并覆盖：
+- app
+- build.gradle
+- settings.gradle
+
+不要把 MoenyBoard_v1.4_UpdateOnly 整个外层文件夹上传。
+你原有的 .github/workflows/build-apk.yml 保持不动。
+Commit changes 后 GitHub Actions 会自动重新生成 APK。
