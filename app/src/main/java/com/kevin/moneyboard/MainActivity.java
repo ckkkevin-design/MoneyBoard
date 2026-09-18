@@ -1,5 +1,6 @@
 package com.kevin.moneyboard;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
@@ -22,6 +23,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -30,6 +34,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.animation.DecelerateInterpolator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -192,7 +197,7 @@ public class MainActivity extends Activity {
         body.addView(v12CycleHeadline(now));
         body.addView(v12HeroBudgetCard(now, s, plan), cardParams(0));
         body.addView(v12CompactMetrics(s), cardParams(10));
-        body.addView(v12ChartCard("每日消费趋势", "观察这个周期每天花了多少", new LineChartView(dailySeries(cycle[0], cycle[1]), BLUE, dayLabel(cycle[0]), dayLabel(Math.max(cycle[0], cycle[1] - 86400000L)))), cardParams(10));
+        body.addView(v12ChartCard("每日消费趋势", "长按或拖动查看每日金额", new LineChartView(dailySeries(cycle[0], cycle[1]), BLUE, cycle[0], cycle[1]), this::showExpenseDetails), cardParams(10));
         body.addView(v12CategoryCard(now), cardParams(10));
         body.addView(goalCard(s, plan), cardParams(10));
         body.addView(recentCard(), cardParams(10));
@@ -204,7 +209,7 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         TextView title = text("Moeny Board", 27, true, TEXT);
         box.addView(title);
-        TextView sub = text(cycleModeLabel() + " · 点预算卡设置额度 · 点趋势图查看消费明细", 12, false, MUTED);
+        TextView sub = text(cycleModeLabel() + " · 点预算卡设置额度 · 长按趋势图看金额", 12, false, MUTED);
         sub.setPadding(0, dp(5), 0, dp(15));
         box.addView(sub);
         return box;
@@ -302,14 +307,28 @@ public class MainActivity extends Activity {
         return box;
     }
 
-    private View v12ChartCard(String title, String subtitle, View chart) {
+    private View v12ChartCard(String title, String subtitle, View chart, Runnable detailsAction) {
         LinearLayout c = card();
-        c.addView(text(title, 17, true, TEXT));
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        copy.addView(text(title, 17, true, TEXT));
         TextView sub = text(subtitle, 12, false, MUTED);
-        sub.setPadding(0, dp(4), 0, dp(8));
-        c.addView(sub);
-        c.addView(chart, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180)));
-        c.setOnClickListener(v -> showExpenseDetails());
+        sub.setPadding(0, dp(4), 0, 0);
+        copy.addView(sub);
+        head.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView details = text("查看明细  ›", 11, true, BLUE);
+        details.setGravity(Gravity.CENTER);
+        details.setPadding(dp(10), dp(7), dp(10), dp(7));
+        details.setBackground(ripple(BLUE_SOFT, 0, 14));
+        details.setOnClickListener(v -> detailsAction.run());
+        head.addView(details);
+        c.addView(head);
+        LinearLayout.LayoutParams chartLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
+        chartLp.setMargins(0, dp(8), 0, 0);
+        c.addView(chart, chartLp);
         return c;
     }
 
@@ -1459,7 +1478,17 @@ public class MainActivity extends Activity {
     private LinearLayout rowCard(int fill){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.HORIZONTAL);c.setGravity(Gravity.CENTER_VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));c.setBackground(glassTintDrawable(fill,17));c.setElevation(dark?0:dp(2));return c;}
     private LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(16),dp(15),dp(16),dp(15));c.setBackground(glassDrawable(18));c.setElevation(dark?0:dp(3));return c;}
     private LinearLayout pageBody(){LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(18),dp(12),dp(18),dp(22));return body;}
-    private void mount(LinearLayout body){ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);scroll.addView(body,new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));pageHost.removeAllViews();pageHost.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT));}
+    private void mount(LinearLayout body){
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+        scroll.addView(body,new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));
+        pageHost.removeAllViews();
+        pageHost.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT));
+        scroll.setAlpha(0f);
+        scroll.setTranslationY(dp(8));
+        scroll.animate().alpha(1f).translationY(0f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
+    }
 
     private TextView text(String s,int sp,boolean bold,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(sp);t.setTextColor(color);t.setTypeface(Typeface.create("sans",bold?Typeface.BOLD:Typeface.NORMAL));t.setIncludeFontPadding(false);return t;}
     private EditText edit(String hint){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(MUTED);e.setTextColor(TEXT);e.setTextSize(13);e.setSingleLine(true);e.setPadding(dp(14),0,dp(14),0);e.setBackground(glassTintDrawable(INPUT_BG,14));return e;}
@@ -1501,6 +1530,7 @@ public class MainActivity extends Activity {
     private GradientDrawable rounded(int fill,int stroke,int radius){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(radius));if(stroke!=0)d.setStroke(dp(1),stroke);return d;}
     private GradientDrawable gradientRounded(int start,int end,int radius){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{start,end});d.setCornerRadius(dp(radius));return d;}
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
+    private float dp(float v){return v*getResources().getDisplayMetrics().density;}
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     private void selectNav(int i){selectedNav=i;updateNav();}
 
@@ -1529,22 +1559,316 @@ public class MainActivity extends Activity {
     }
 
     private class LineChartView extends View {
-        private final List<Double> values; private final int color; private final String startLabel,endLabel; private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        LineChartView(List<Double> values,int color,String startLabel,String endLabel){super(MainActivity.this);this.values=values;this.color=color;this.startLabel=startLabel;this.endLabel=endLabel;}
-        @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);
-            float left=dp(8),top=dp(14),right=getWidth()-dp(8),bottom=getHeight()-dp(22);
-            p.setStrokeWidth(dp(1));p.setColor(LINE);
-            for(int i=0;i<4;i++){float y=top+(bottom-top)*i/3f;canvas.drawLine(left,y,right,y,p);}
-            double max=0;for(double v:values)max=Math.max(max,v);
-            if(values.isEmpty()||max<=0){p.setStyle(Paint.Style.FILL);p.setColor(MUTED);p.setTextAlign(Paint.Align.CENTER);p.setTextSize(dp(12));canvas.drawText("暂无消费数据",getWidth()/2f,getHeight()/2f,p);drawLineLabels(canvas,left,right);return;}
-            Path path=new Path();
-            for(int i=0;i<values.size();i++){float x=left+(right-left)*i/Math.max(1,values.size()-1);float y=bottom-(float)((values.get(i)/max)*(bottom-top));if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}
-            p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(3));p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);p.setColor(color);canvas.drawPath(path,p);
-            p.setStyle(Paint.Style.FILL);p.setColor(color);int step=Math.max(1,values.size()/6);for(int i=0;i<values.size();i+=step){float x=left+(right-left)*i/Math.max(1,values.size()-1);float y=bottom-(float)((values.get(i)/max)*(bottom-top));canvas.drawCircle(x,y,dp(3),p);}
-            drawLineLabels(canvas,left,right);
+        private final List<Double> values;
+        private final int color;
+        private final long startMs, endMs;
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final SimpleDateFormat axisDateFmt = new SimpleDateFormat("MM/dd", Locale.CHINA);
+        private final SimpleDateFormat tooltipDateFmt = new SimpleDateFormat("MM月dd日", Locale.CHINA);
+        private final int touchSlop;
+        private float revealProgress = 0f;
+        private int selectedIndex = -1;
+        private float downX, downY;
+        private boolean longPressActive = false;
+        private boolean pointerDown = false;
+        private Runnable longPressRunnable;
+        private Runnable clearSelectionRunnable;
+        private ValueAnimator revealAnimator;
+
+        LineChartView(List<Double> values, int color, long startMs, long endMs) {
+            super(MainActivity.this);
+            this.values = values;
+            this.color = color;
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.touchSlop = ViewConfiguration.get(MainActivity.this).getScaledTouchSlop();
+            setClickable(true);
+            setFocusable(true);
+            setContentDescription("每日消费趋势图，长按并左右拖动查看每天消费金额");
         }
-        private void drawLineLabels(Canvas canvas,float left,float right){p.setStyle(Paint.Style.FILL);p.setColor(MUTED);p.setTextSize(dp(10));p.setTextAlign(Paint.Align.LEFT);canvas.drawText(startLabel,left,getHeight()-dp(2),p);p.setTextAlign(Paint.Align.RIGHT);canvas.drawText(endLabel,right,getHeight()-dp(2),p);}
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            if (revealAnimator != null) revealAnimator.cancel();
+            revealProgress = 0f;
+            revealAnimator = ValueAnimator.ofFloat(0f, 1f);
+            revealAnimator.setDuration(720);
+            revealAnimator.setInterpolator(new DecelerateInterpolator());
+            revealAnimator.addUpdateListener(a -> {
+                revealProgress = (float) a.getAnimatedValue();
+                invalidate();
+            });
+            revealAnimator.start();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            if (revealAnimator != null) revealAnimator.cancel();
+            if (longPressRunnable != null) removeCallbacks(longPressRunnable);
+            if (clearSelectionRunnable != null) removeCallbacks(clearSelectionRunnable);
+            super.onDetachedFromWindow();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float left = dp(50), top = dp(14), right = getWidth() - dp(12), bottom = getHeight() - dp(38);
+            if (right <= left || bottom <= top) return;
+
+            double rawMax = 0;
+            for (double v : values) rawMax = Math.max(rawMax, v);
+            double axisMax = niceAxisMax(rawMax);
+
+            drawAxes(canvas, left, top, right, bottom, axisMax);
+            drawDateLabels(canvas, left, right, bottom);
+
+            if (values.isEmpty() || rawMax <= 0) {
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(MUTED);
+                p.setTextAlign(Paint.Align.CENTER);
+                p.setTypeface(Typeface.DEFAULT);
+                p.setTextSize(dp(12));
+                canvas.drawText("暂无消费数据", (left + right) / 2f, (top + bottom) / 2f, p);
+                return;
+            }
+
+            Path path = buildAnimatedPath(left, top, right, bottom, axisMax);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dp(3));
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeJoin(Paint.Join.ROUND);
+            p.setColor(color);
+            canvas.drawPath(path, p);
+
+            int step = Math.max(1, values.size() / 7);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(color);
+            for (int i = 0; i < values.size(); i += step) {
+                float normalizedX = values.size() <= 1 ? 0f : i / (float) (values.size() - 1);
+                if (normalizedX > revealProgress + 0.001f) break;
+                float x = xForIndex(i, left, right);
+                float y = yForValue(values.get(i), axisMax, top, bottom);
+                canvas.drawCircle(x, y, dp(2.5f), p);
+            }
+            if (!values.isEmpty() && revealProgress >= .999f) {
+                int last = values.size() - 1;
+                canvas.drawCircle(xForIndex(last, left, right), yForValue(values.get(last), axisMax, top, bottom), dp(2.5f), p);
+            }
+
+            if (selectedIndex >= 0 && selectedIndex < values.size()) {
+                drawSelection(canvas, left, top, right, bottom, axisMax, selectedIndex);
+            }
+        }
+
+        private Path buildAnimatedPath(float left, float top, float right, float bottom, double axisMax) {
+            Path path = new Path();
+            if (values.isEmpty()) return path;
+            if (values.size() == 1) {
+                float x = left;
+                float y = yForValue(values.get(0), axisMax, top, bottom);
+                path.moveTo(x, y);
+                path.lineTo(x + Math.max(dp(1), (right - left) * revealProgress), y);
+                return path;
+            }
+            float progressIndex = revealProgress * (values.size() - 1);
+            int full = Math.min(values.size() - 1, (int) Math.floor(progressIndex));
+            float fraction = progressIndex - full;
+            for (int i = 0; i <= full; i++) {
+                float x = xForIndex(i, left, right);
+                float y = yForValue(values.get(i), axisMax, top, bottom);
+                if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+            }
+            if (full < values.size() - 1 && fraction > 0f) {
+                float x1 = xForIndex(full, left, right), y1 = yForValue(values.get(full), axisMax, top, bottom);
+                float x2 = xForIndex(full + 1, left, right), y2 = yForValue(values.get(full + 1), axisMax, top, bottom);
+                path.lineTo(x1 + (x2 - x1) * fraction, y1 + (y2 - y1) * fraction);
+            }
+            return path;
+        }
+
+        private void drawAxes(Canvas canvas, float left, float top, float right, float bottom, double axisMax) {
+            p.setTypeface(Typeface.DEFAULT);
+            p.setStrokeWidth(dp(1));
+            p.setTextSize(dp(9));
+            for (int i = 0; i <= 4; i++) {
+                float y = bottom - (bottom - top) * i / 4f;
+                p.setColor(LINE);
+                canvas.drawLine(left, y, right, y, p);
+                double value = axisMax * i / 4d;
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(MUTED);
+                p.setTextAlign(Paint.Align.RIGHT);
+                canvas.drawText(axisMoney(value), left - dp(7), y + dp(3), p);
+            }
+            p.setColor(dark ? Color.rgb(82, 96, 112) : Color.rgb(203, 210, 220));
+            p.setStrokeWidth(dp(1));
+            canvas.drawLine(left, top, left, bottom, p);
+            canvas.drawLine(left, bottom, right, bottom, p);
+        }
+
+        private void drawDateLabels(Canvas canvas, float left, float right, float bottom) {
+            if (values.isEmpty()) return;
+            int labelCount = Math.min(5, values.size());
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(MUTED);
+            p.setTypeface(Typeface.DEFAULT);
+            p.setTextSize(dp(9));
+            for (int j = 0; j < labelCount; j++) {
+                int index = labelCount == 1 ? 0 : Math.round(j * (values.size() - 1f) / (labelCount - 1f));
+                float x = xForIndex(index, left, right);
+                if (j == 0) p.setTextAlign(Paint.Align.LEFT);
+                else if (j == labelCount - 1) p.setTextAlign(Paint.Align.RIGHT);
+                else p.setTextAlign(Paint.Align.CENTER);
+                canvas.drawText(axisDateFmt.format(new Date(dayTimestamp(index))), x, bottom + dp(18), p);
+            }
+        }
+
+        private void drawSelection(Canvas canvas, float left, float top, float right, float bottom, double axisMax, int index) {
+            float x = xForIndex(index, left, right);
+            float y = yForValue(values.get(index), axisMax, top, bottom);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dp(1));
+            p.setColor(Color.argb(dark ? 150 : 110, 70, 90, 120));
+            canvas.drawLine(x, top, x, bottom, p);
+
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.WHITE);
+            canvas.drawCircle(x, y, dp(6), p);
+            p.setColor(color);
+            canvas.drawCircle(x, y, dp(3.5f), p);
+
+            String date = tooltipDateFmt.format(new Date(dayTimestamp(index)));
+            String amount = "¥" + money.format(values.get(index));
+            String label = date + "   " + amount;
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            p.setTextSize(dp(11));
+            float textW = p.measureText(label);
+            float bubbleW = textW + dp(22);
+            float bubbleH = dp(34);
+            float bx = Math.max(left, Math.min(right - bubbleW, x - bubbleW / 2f));
+            float by = Math.max(dp(2), y - bubbleH - dp(12));
+            if (by < top - dp(4)) by = Math.min(bottom - bubbleH - dp(8), y + dp(12));
+            RectF bubble = new RectF(bx, by, bx + bubbleW, by + bubbleH);
+            fillPaint.setColor(dark ? Color.rgb(235, 240, 248) : Color.rgb(26, 36, 52));
+            canvas.drawRoundRect(bubble, dp(12), dp(12), fillPaint);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(dark ? Color.rgb(25, 35, 48) : Color.WHITE);
+            p.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText(label, bubble.centerX(), bubble.centerY() + dp(4), p);
+            p.setTypeface(Typeface.DEFAULT);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            float left = dp(50), right = getWidth() - dp(12);
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    pointerDown = true;
+                    longPressActive = false;
+                    downX = event.getX();
+                    downY = event.getY();
+                    if (clearSelectionRunnable != null) removeCallbacks(clearSelectionRunnable);
+                    longPressRunnable = () -> {
+                        if (!pointerDown) return;
+                        longPressActive = true;
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                        updateSelectedIndex(downX, left, right);
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    };
+                    postDelayed(longPressRunnable, 260);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (!longPressActive) {
+                        float dx = event.getX() - downX, dy = event.getY() - downY;
+                        if (Math.hypot(dx, dy) > touchSlop) {
+                            if (longPressRunnable != null) removeCallbacks(longPressRunnable);
+                            if (Math.abs(dx) > Math.abs(dy) * 1.15f) {
+                                longPressActive = true;
+                                getParent().requestDisallowInterceptTouchEvent(true);
+                                updateSelectedIndex(event.getX(), left, right);
+                            }
+                        }
+                    } else updateSelectedIndex(event.getX(), left, right);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    pointerDown = false;
+                    if (longPressRunnable != null) removeCallbacks(longPressRunnable);
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                    if (!longPressActive && Math.hypot(event.getX() - downX, event.getY() - downY) <= touchSlop * 1.5f) {
+                        updateSelectedIndex(event.getX(), left, right);
+                        performClick();
+                    }
+                    longPressActive = false;
+                    scheduleSelectionClear();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    pointerDown = false;
+                    if (longPressRunnable != null) removeCallbacks(longPressRunnable);
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                    longPressActive = false;
+                    scheduleSelectionClear();
+                    return true;
+            }
+            return super.onTouchEvent(event);
+        }
+
+        @Override public boolean performClick() {
+            super.performClick();
+            return true;
+        }
+
+        private void updateSelectedIndex(float x, float left, float right) {
+            if (values.isEmpty()) return;
+            float clamped = Math.max(left, Math.min(right, x));
+            float ratio = right <= left ? 0f : (clamped - left) / (right - left);
+            int index = Math.round(ratio * Math.max(0, values.size() - 1));
+            index = Math.max(0, Math.min(values.size() - 1, index));
+            if (index != selectedIndex) {
+                selectedIndex = index;
+                invalidate();
+            }
+        }
+
+        private void scheduleSelectionClear() {
+            if (clearSelectionRunnable != null) removeCallbacks(clearSelectionRunnable);
+            clearSelectionRunnable = () -> {
+                selectedIndex = -1;
+                invalidate();
+            };
+            postDelayed(clearSelectionRunnable, 1800);
+        }
+
+        private float xForIndex(int index, float left, float right) {
+            return values.size() <= 1 ? left : left + (right - left) * index / (float) (values.size() - 1);
+        }
+
+        private float yForValue(double value, double axisMax, float top, float bottom) {
+            return bottom - (float) ((Math.max(0, value) / Math.max(1d, axisMax)) * (bottom - top));
+        }
+
+        private long dayTimestamp(int index) {
+            Calendar c = Calendar.getInstance();
+            c.setTimeInMillis(startMs);
+            c.add(Calendar.DAY_OF_MONTH, Math.max(0, index));
+            return Math.min(c.getTimeInMillis(), Math.max(startMs, endMs - 1));
+        }
+
+        private double niceAxisMax(double max) {
+            if (max <= 0) return 100d;
+            double rough = max * 1.10d;
+            double power = Math.pow(10, Math.floor(Math.log10(rough)));
+            double normalized = rough / power;
+            double nice;
+            if (normalized <= 1d) nice = 1d;
+            else if (normalized <= 2d) nice = 2d;
+            else if (normalized <= 5d) nice = 5d;
+            else nice = 10d;
+            return nice * power;
+        }
+
+        private String axisMoney(double value) {
+            if (value >= 10000) return "¥" + new DecimalFormat("0.#").format(value / 10000d) + "万";
+            if (value >= 1000) return "¥" + new DecimalFormat("0.#").format(value / 1000d) + "k";
+            return "¥" + new DecimalFormat("0").format(value);
+        }
     }
 
     private class DonutChartView extends View {

@@ -1,64 +1,26 @@
-# Moeny Board v1.5.0 — 检查报告
+# Moeny Board v1.6.0 — 静态核验报告
 
-## 结论
+## 已检查
 
-v1.5 针对“总预算保存后前端仍显示未设置”做了数据键统一、保存回读校验、UI 立即刷新和版本识别四层修复。
+- [x] `versionName` = `1.6.0`
+- [x] `versionCode` = `10`
+- [x] 首页趋势图不再绑定整卡跳转。
+- [x] 明细跳转改为显式“查看明细 ›”按钮。
+- [x] 趋势图构造参数包含真实周期 start/end 时间。
+- [x] Y 轴金额刻度逻辑存在。
+- [x] X 轴最多 5 个日期标签逻辑存在。
+- [x] tooltip 含日期、金额、垂直指示线、高亮数据点。
+- [x] 长按延迟 = 260ms。
+- [x] 长按触发 haptic feedback。
+- [x] 长按后水平拖动会更新 nearest index。
+- [x] tooltip 松手后 1800ms 自动清除。
+- [x] 趋势线 reveal animator = 720ms。
+- [x] 页面 mount 动画 = 220ms。
+- [x] v1.5 预算 canonical key 代码未移除。
+- [x] 数据库文件和表结构未改动。
 
-## 已发现的 v1.4.x 现场问题
+## 构建说明
 
-- 当前 GitHub 主分支源码已经是 v1.4.2，并且 v1.4.2 预算页源码右上角应显示“设置预算 / 修改预算”。
-- 用户提供的手机截图里，同一位置仍显示“0%”，这是 v1.4.1 的卡片结构。
-- 因此至少有一次“源码已更新，但手机安装的 APK 仍是旧构建”的情况。
-- 历史 Actions Artifact 名长期相同，容易从旧 run 下载到旧 APK。
-
-v1.5 为此增加实际安装版本显示，并把新版 workflow Artifact 名改成带版本号的 `MoenyBoard-v1.5.0-apk`。
-
-## 源码检查
-
-已完成：
-
-- Java 括号/字符串/注释结构扫描：通过。
-- Android XML 解析：通过。
-- versionName = 1.5.0：通过。
-- versionCode = 9：通过。
-- 首页预算读取统一使用 `getPlanForCycle()`：通过。
-- 预算页预算读取统一使用 `getPlanForCycle()`：通过。
-- 首页紫色预算卡直接绑定预算编辑：通过。
-- 保存后 SQLite 立即回读并比较 budget / target：通过。
-- v1.4.x legacy key 迁移逻辑存在：通过。
-- 分类预算使用同一 canonical cycle key：通过。
-- “关于我们”不再硬编码旧版本号：通过。
-- 所有 ZIP 完整性测试：通过。
-
-## 周期键验证
-
-默认每月 15 日周期：
-
-```text
-2026-09-05 -> 2026-08-15 00:00 ~ 2026-09-15 00:00
-canonical key = cycle-20260815-20260915
-legacy key    = 2026-08
-```
-
-到 2026-09-15 00:00 自动切换：
-
-```text
-2026-09-15 00:00 ~ 2026-10-15 00:00
-canonical key = cycle-20260915-20261015
-```
-
-## 仍需 GitHub Actions 做的最终验证
-
-本地运行环境没有完整 Android SDK，因此最终 APK 编译仍应由仓库 GitHub Actions 完成。
-
-最新 workflow 已加入构建前版本校验；只有源码确实是 v1.5.0 / build 9 才继续构建。
-
-真机验收顺序：
-
-1. 安装最新 run 生成的 APK。
-2. 我的 -> 关于我们，确认 `1.5.0 (9)`。
-3. 首页点击紫色预算卡。
-4. 输入总预算 3000，保存。
-5. 首页应立即显示预算上限 3000 / 剩余金额。
-6. 进入预算管理，应同步显示 3000。
-7. 强制关闭并重新打开 App，预算仍应存在。
+当前本地容器没有 Android SDK，因此无法在本地完成 Android 编译。
+GitHub Actions workflow 已更新为先校验 v1.6 版本号，再执行 `gradle :app:assembleDebug --stacktrace`。
+最终以 GitHub Actions 绿色通过为编译验收。
